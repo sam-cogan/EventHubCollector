@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
 using System.Text;
@@ -24,17 +25,17 @@ namespace EventHubCollector
         public Dictionary<string, object> Properties { get; set; }
 
         [DataMember(Name = "Body")]
-        public byte[] Body { get; set; }
+        public Dictionary<string, object> Body { get; set; }
 
         public EventData(dynamic record)
         {
             SequenceNumber = (long)record.SequenceNumber;
             Offset = (string)record.Offset;
-            DateTime.TryParse((string)record.EnqueuedTimeUtc, out var enqueuedTimeUtc);
-            EnqueuedTimeUtc = enqueuedTimeUtc;
+            //DateTime.TryParse((string)record.EnqueuedTimeUtc, out var enqueuedTimeUtc);
+            EnqueuedTimeUtc = DateTime.ParseExact(record.EnqueuedTimeUtc, "M/d/yyyy h:mm:ss tt", System.Globalization.CultureInfo.InvariantCulture);
             SystemProperties = (Dictionary<string, object>)record.SystemProperties;
             Properties = (Dictionary<string, object>)record.Properties;
-            Body = (byte[])record.Body;
+            Body = JsonConvert.DeserializeObject<Dictionary<string, object>>(Encoding.UTF8.GetString(record.Body)); 
         }
 
 

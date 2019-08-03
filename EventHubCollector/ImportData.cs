@@ -20,6 +20,7 @@ namespace EventHubCollector
         private static string StorageContainerName = Environment.GetEnvironmentVariable("StorageContainerName");
         private static string StorageAccountName = Environment.GetEnvironmentVariable("StorageAccountName");
         private static string KeyVaultName = Environment.GetEnvironmentVariable("KeyvaultName");
+        private static string OutputType = Environment.GetEnvironmentVariable("OutputType");
         [FunctionName("ImportData")]
         public async static void Run([TimerTrigger("%TimerInterval%")]TimerInfo myTimer, [CosmosDB(
                 databaseName: "%ComsosDatabase%",
@@ -35,10 +36,26 @@ namespace EventHubCollector
             {
                 if (ehEvent != null)
                 {
-                    string content= Encoding.UTF8.GetString(ehEvent.Body);
-                    await steventsOut.AddAsync(content);
+                    if (OutputType == "body")
+                    {
+            
+                        string content = Newtonsoft.Json.JsonConvert.SerializeObject(ehEvent.Body);
+                        await steventsOut.AddAsync(content);
+                    }
+                    if(OutputType == "all")
+                    {
+
+                   
+                        string content = Newtonsoft.Json.JsonConvert.SerializeObject(ehEvent);
+                        await steventsOut.AddAsync(content);
+                    }
+                   
                 }
             }
+
+ 
+                  RemoveBlob(container, log);
+
         }
 
 
@@ -66,7 +83,8 @@ namespace EventHubCollector
         {
  
             BlobContinuationToken blobContinuationToken = null;
-            List<EventData> eventDataList = new List<EventData>();
+            List<EventData> eventDataList= new List<EventData>();
+            var TimeWindow=Environment.GetEnvironmentVariable("FunctionIntervalInMinutes");
             do
             {
                 var results = await container.ListBlobsSegmentedAsync(null, true, BlobListingDetails.Metadata, null, blobContinuationToken, null, null);
@@ -75,50 +93,102 @@ namespace EventHubCollector
                 log.LogInformation("total results:" + results.Results.Count());
                 foreach (var blob in results.Results.OfType<CloudBlockBlob>().OrderByDescending(x => x.Properties.Created.Value))
                 {
-                    //log.Info(blob.Properties.Created.Value.ToUniversalTime().ToString());
-                    if (blob.Properties.Created.Value.ToUniversalTime() > DateTime.Now.AddMinutes(-600).ToUniversalTime())
+      
+                    if (blob.Properties.Created.Value.ToUniversalTime() > DateTime.Now.AddMinutes(int.Parse(TimeWindow)*-1).ToUniversalTime())
                     {
                 
 
-                        var ehEventData = await Dump(blob, log);
-                        eventDataList.Add(ehEventData);
+        
+                        if (blob.Properties.Length != 508)
+                        {
+                            using (var stream = await blob.OpenReadAsync())
+                            {
+
+                                var reader = AvroContainer.CreateGenericReader(stream);
+
+            
+                                while (reader.MoveNext())
+                                {
+                                    foreach (dynamic record in reader.Current.Objects)
+                                    {
+                                        var eventData = new EventData(record);
+                                        eventDataList.Add(eventData);
+
+
+                                    }
+                                }
+                               // await blob.DeleteAsync();
+                 
+
+                            }
+                        }
+                
                     }
                     else
                     {
+                   
                         blobContinuationToken = null;
                     }
+
+                  
                 }
-            } while (blobContinuationToken != null); // Loop while the continuation token is not null. 
+
+                //foreach (var blob in results.Results.OfType<CloudBlockBlob>().OrderByDescending(x => x.Properties.Created.Value))
+                //{
+                //    await blob.DeleteAsync();
+                //}
+                } while (blobContinuationToken != null); // Loop while the continuation token is not null. 
 
             return eventDataList;
         }
 
-        private static async Task<EventData> Dump(CloudBlockBlob blob, ILogger log)
+        public static async void  RemoveBlob(CloudBlobContainer container, ILogger log)
         {
-            // Check for blob with no event data, size is always 508
-            if (blob.Properties.Length != 508)
+            BlobContinuationToken blobContinuationToken = null;
+
+            do
             {
-                using (var stream = await blob.OpenReadAsync())
+                var results = await container.ListBlobsSegmentedAsync(null, true, BlobListingDetails.Metadata, null, blobContinuationToken, null, null);
+                // Get the value of the continuation token returned by the listing call.
+                blobContinuationToken = results.ContinuationToken;
+                log.LogInformation("total results:" + results.Results.Count());
+                foreach (var blob in results.Results.OfType<CloudBlockBlob>())
                 {
-
-                    var reader = AvroContainer.CreateGenericReader(stream);
-
-
-                    while (reader.MoveNext())
-                    {
-                        foreach (dynamic record in reader.Current.Objects)
-                        {
-                            var eventData = new EventData(record);
-                            await blob.DeleteAsync();
-                            return eventData;
-                        }
-                    }
-
+                    await blob.DeleteIfExistsAsync();
                 }
-            }
-            await blob.DeleteAsync();
-            return null;
+            } while (blobContinuationToken != null); // Loop while the continuation token is not null. 
+        }
 
+
+            //private static async Task<List<EventData>> Dump(CloudBlockBlob blob, ILogger log)
+            //{
+            //    // Check for blob with no event data, size is always 508
+            //    if (blob.Properties.Length != 508)
+            //    {
+            //        using (var stream = await blob.OpenReadAsync())
+            //        {
+
+            //            var reader = AvroContainer.CreateGenericReader(stream);
+
+            //            List<EventData> eventDataList = new List<EventData>();
+            //            while (reader.MoveNext())
+            //            {
+            //                foreach (dynamic record in reader.Current.Objects)
+            //                {
+            //                    var eventData = new EventData(record);
+            //                    eventDataList.Add(eventData);
+
+
+            //                }
+            //            }
+            //            await blob.DeleteAsync();
+            //            return eventDataList;
+
+            //        }
+            //    }
+
+            //    return null;
+
+            //}
         }
     }
-}

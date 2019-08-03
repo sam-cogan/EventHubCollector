@@ -68,6 +68,18 @@
                 "description": "Resource Group that contains your Cosmos DB instance"
             }
         },
+        "OutputType": {
+            "type": "string",
+            "metadata": {
+                 "description": "Whether to Output the whole Event Hub message or just the body"
+             },
+             "allowedValues": [
+                 "all",
+                 "body"
+             ],
+             "defaultValue": "all"
+             
+         },
         "UploadFunctionFiles":{
             "type":"bool",
             "metadata": {
@@ -229,6 +241,10 @@
                             "value": "[concat('0 */',parameters('FunctionIntervalInMinutes') , ' * * * *')]"
                         },
                         {
+                            "name": "FunctionIntervalInMinutes",
+                            "value": "[parameters('FunctionIntervalInMinutes')]"
+                        },
+                        {
                             "name": "ComsosDatabase",
                             "value": "[parameters('CosmosDBDatabase')]"
                         },
@@ -239,6 +255,10 @@
                         {
                             "name": "StorageAccountKeySecretName",
                             "value": "StorageAccountKeySecret"
+                        },
+                        {
+                            "name":"OutputType",
+                            "value":"[parameters('OutputType')]"
                         },
                         {
                             "name": "WEBSITE_RUN_FROM_PACKAGE",
